@@ -585,7 +585,7 @@ class Player {
 		this.count=(this.count+5+5*sp);
 		if (my) {
 			if (!this.stip&&this.count>180) {sndPaff.currentTime = 0; sndPaff.play(); this.stip=1;}
-			if (this.count>360) {this.count-=360; sndPaff.currentTime = 0; sndPaff.play(); this.stip=0;}
+			if (this.stip&&this.count>360) {this.count-=360; sndPaff.currentTime = 0; sndPaff.play(); this.stip=0;}
 		}
 		let rot1=45*Math.dsin(this.count);
 		let rot3=45*Math.dsin(this.count+90);
