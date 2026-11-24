@@ -1083,7 +1083,6 @@ function render(time) {
 	//gl.drawElementsInstanced(gl.TRIANGLES, indexs[0].length, gl.UNSIGNED_SHORT, 0, 1);
 	requestAnimationFrame(render);
 }
-requestAnimationFrame(render);
 
 
 //1-9 controls
