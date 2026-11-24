@@ -15,6 +15,7 @@ function gamepad() {
 		// axes[2] & axes[3] are Right Stick X & Y (-1.0 to 1.0)
 		mx = gp.axes[0]*2;
 		my = gp.axes[1];
+		if (Math.abs(my)<0.01) my=0;
 		ax = gp.axes[2]*2;
 		ay = gp.axes[3]*2;
 			`Controller: ${gp.id}\n` +
