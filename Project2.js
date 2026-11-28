@@ -13,8 +13,9 @@ function gamepad() {
 	if (gp) {
 		// axes[0] & axes[1] are Left Stick X & Y (-1.0 to 1.0)
 		// axes[2] & axes[3] are Right Stick X & Y (-1.0 to 1.0)
-		mx = gp.axes[0]*2;
+		mx = gp.axes[0];
 		my = gp.axes[1];
+		if (Math.abs(mx)<0.01) mx=0;
 		if (Math.abs(my)<0.01) my=0;
 		ax = gp.axes[2]*2;
 		ay = gp.axes[3]*2;
@@ -48,6 +49,11 @@ function checkdist(x1, y1, x2, y2, dist) {
 function getangle(x1, y1, x2, y2) {
 	return (Math.atan2(x1-x2,y1-y2));
 }
+function angDiff(a1, a2) {
+  let diff = (a2 - a1 + 180) % 360 - 180;
+  return diff < -180 ? diff + 360 : diff;
+}
+
 // Obtains normal (used for projection matrix) (not used in this lab)
 function getnormal(xw, yw, zw) {
 	let l = Math.hypot(xw, yw, zw);
@@ -260,6 +266,7 @@ const vSourceI = `#version 300 es
 	in vec3 color;
 	in mat4 matrix;
 	in mat3 shape;
+	in float twist;
 	uniform mat4 view;
 	uniform mat4 proj;
 	//in vec2 inTexCoord;
@@ -269,6 +276,8 @@ const vSourceI = `#version 300 es
 	void main() {
 		vec3 pos = position;
 		vec3 norm = position;
+		float d = shape[2][1]-shape[2][0];
+		float s = (pos.y-shape[2][0])/(d);
 		if (pos.y<=shape[2][0]) {
 			pos *= shape[0];
 			norm = normalize(norm / shape[0]);
@@ -279,8 +288,8 @@ const vSourceI = `#version 300 es
 			pos.y += shape[2][2];
 		}
 		else {
-			float d = shape[2][1]-shape[2][0];
-			float s = (pos.y-shape[2][0])/(d);
+			//float d = shape[2][1]-shape[2][0];
+			//float s = (pos.y-shape[2][0])/(d);
 			vec2 ang = pos.xy;
 			vec3 warp = (shape[1] * s) + (shape[0] * (1.0-s));
 			pos *= warp;
@@ -292,6 +301,15 @@ const vSourceI = `#version 300 es
 			norm.y+=length(ang)/shape[2][2];
 			normalize(norm);
 			pos.y += s * shape[2][2];
+	}
+	if (twist!=0.0&&position.y<shape[2][1]) {
+		float mul = 1.0;
+		if (position.y > shape[2][0]) {mul = s;}
+		float tr = -twist*position.y;
+		float ct = cos(tr);
+		float st = sin(tr);
+		pos.xz=vec2(pos.x*ct-pos.z*st,pos.x*st+pos.z*ct);
+		norm.xz=vec2(norm.x*ct-norm.z*st,norm.x*st+norm.z*ct);
 	}
     gl_Position = proj * view * matrix * vec4(pos, 1.0);
 
@@ -389,75 +407,14 @@ class Room {
 		this.addBlock(8,14,7,4);
 		this.addBlock(8,14,8,4);
 		this.addBlock(7,14,8,4);
+		this.addBlock(7,13,7,4);
+		this.addBlock(8,13,7,4);
+		this.addBlock(8,13,8,4);
+		this.addBlock(7,13,8,4);
 		this.verts=new Float32Array(xw*yw*zw*8*4);
 		this.elems=new Uint16Array(xw*yw*zw*6);
 		this.count=0;
-		var ii=0;
-		for(let xi=0; xi<xw; xi++) {
-			for(let yi=0; yi<yw; yi++) {
-				for(let zi=0; zi<zw; zi++) {
-					let ti=13-this.data[xi+yi*xw+zi*xw*yw];
-					let ty=(Math.trunc(ti/4))/4;
-					let tx=(ti%4)/4;
-					if(xi!=0) if(this.data[xi + yi*xw + zi*xw*yw]!=0&&this.data[(xi-1) + yi*xw + zi*xw*yw]==0) {
-						let xpos = xi-(xw/2);//this
-						let ypos = yi-(yw/2);
-						let zpos = zi-(zw/2);
-						let vi = ii*4;
-						this.setVerts(xpos,ypos,zpos,-1,0,0,tx,ty,vi);
-						this.elems.set([vi+1,vi,vi+2,vi+2,vi+3,vi+1],ii*6);
-						ii++;
-					}
-					if(yi!=0) if(this.data[xi + yi*xw + zi*xw*yw]!=0&&this.data[xi + (yi-1)*xw + zi*xw*yw]==0) {
-						let ypos = yi-(yw/2);
-						let xpos = xi-(xw/2);
-						let zpos = zi-(zw/2);
-						let vi = ii*4;
-						this.setVerts(xpos,ypos,zpos,0,-1,0,tx,ty,vi);
-						this.elems.set([vi,vi+1,vi+3,vi+3,vi+2,vi],ii*6);
-						ii++;
-					}
-					if(zi!=0) if(this.data[xi + yi*xw + zi*xw*yw]!=0&&this.data[xi + yi*xw + (zi-1)*xw*yw]==0) {
-						let zpos = zi-(zw/2);//this
-						let xpos = xi-(xw/2);
-						let ypos = yi-(yw/2);
-						let vi = ii*4;
-						this.setVerts(xpos,ypos,zpos,0,0,-1,tx,ty,vi);
-						this.elems.set([vi+1,vi,vi+2,vi+2,vi+3,vi+1],ii*6);
-						ii++;
-					}
-					
-					if(xi!=xw-1) if(this.data[xi + yi*xw + zi*xw*yw]!=0&&this.data[(xi+1) + yi*xw + zi*xw*yw]==0) {
-						let xpos = xi-(xw/2-1);//this
-						let ypos = yi-(yw/2);
-						let zpos = zi-(zw/2);
-						let vi = ii*4;
-						this.setVerts(xpos,ypos,zpos,1,0,0,tx,ty,vi);
-						this.elems.set([vi,vi+1,vi+3,vi+3,vi+2,vi],ii*6);
-						ii++;
-					}
-					if(yi!=yw-1) if(this.data[xi + yi*xw + zi*xw*yw]!=0&&this.data[xi + (yi+1)*xw + zi*xw*yw]==0) {
-						let ypos = yi-(yw/2-1);
-						let xpos = xi-(xw/2);
-						let zpos = zi-(zw/2);
-						let vi = ii*4;
-						this.setVerts(xpos,ypos,zpos,0,1,0,tx,ty,vi);
-						this.elems.set([vi+1,vi,vi+2,vi+2,vi+3,vi+1],ii*6);
-						ii++
-					}
-					if(zi!=zw-1) if(this.data[xi + yi*xw + zi*xw*yw]!=0&&this.data[xi + yi*xw + (zi+1)*xw*yw]==0) {
-						let zpos = zi-(zw/2-1);
-						let xpos = xi-(xw/2);
-						let ypos = yi-(yw/2);
-						let vi = ii*4;
-						this.setVerts(xpos,ypos,zpos,0,0,1,tx,ty,vi);
-						this.elems.set([vi,vi+1,vi+3,vi+3,vi+2,vi],ii*6);
-						ii++;
-					}
-				}
-			}
-			this.count=(ii)*6;
-		}
+		this.materialize(1);
 	}
 	setVerts(x, y, z, nx, ny, nz, tx, ty, vi) {
 		let w=0.002;
@@ -489,6 +446,92 @@ class Room {
 	addBlock (x,y,z,i) {
 		this.data[x+y*this.xw+z*this.xw*this.yw] = i;
 	}
+	materialize(skip=0) {
+		this.count=0;
+		let ii=0;
+		for(let xi=0; xi<this.xw; xi++) {
+			for(let yi=0; yi<this.yw; yi++) {
+				for(let zi=0; zi<this.zw; zi++) {
+					let ti=13-this.data[xi+yi*this.xw+zi*this.xw*this.yw];
+					let ty=(Math.trunc(ti/4))/4;
+					let tx=(ti%4)/4;
+					if(xi!=0) if(this.data[xi + yi*this.xw + zi*this.xw*this.yw]!=0&&this.data[(xi-1) + yi*this.xw + zi*this.xw*this.yw]==0) {
+						let xpos = xi-(this.xw/2);//this
+						let ypos = yi-(this.yw/2);
+						let zpos = zi-(this.zw/2);
+						let vi = ii*4;
+						this.setVerts(xpos,ypos,zpos,-1,0,0,tx,ty,vi);
+						this.elems.set([vi+1,vi,vi+2,vi+2,vi+3,vi+1],ii*6);
+						ii++;
+					}
+					if(yi!=0) if(this.data[xi + yi*this.xw + zi*this.xw*this.yw]!=0&&this.data[xi + (yi-1)*this.xw + zi*this.xw*this.yw]==0) {
+						let ypos = yi-(this.yw/2);
+						let xpos = xi-(this.xw/2);
+						let zpos = zi-(this.zw/2);
+						let vi = ii*4;
+						this.setVerts(xpos,ypos,zpos,0,-1,0,tx,ty,vi);
+						this.elems.set([vi,vi+1,vi+3,vi+3,vi+2,vi],ii*6);
+						ii++;
+					}
+					if(zi!=0) if(this.data[xi + yi*this.xw + zi*this.xw*this.yw]!=0&&this.data[xi + yi*this.xw + (zi-1)*this.xw*this.yw]==0) {
+						let zpos = zi-(this.zw/2);//this
+						let xpos = xi-(this.xw/2);
+						let ypos = yi-(this.yw/2);
+						let vi = ii*4;
+						this.setVerts(xpos,ypos,zpos,0,0,-1,tx,ty,vi);
+						this.elems.set([vi+1,vi,vi+2,vi+2,vi+3,vi+1],ii*6);
+						ii++;
+					}
+					
+					if(xi!=this.xw-1) if(this.data[xi + yi*this.xw + zi*this.xw*this.yw]!=0&&this.data[(xi+1) + yi*this.xw + zi*this.xw*this.yw]==0) {
+						let xpos = xi-(this.xw/2-1);//this
+						let ypos = yi-(this.yw/2);
+						let zpos = zi-(this.zw/2);
+						let vi = ii*4;
+						this.setVerts(xpos,ypos,zpos,1,0,0,tx,ty,vi);
+						this.elems.set([vi,vi+1,vi+3,vi+3,vi+2,vi],ii*6);
+						ii++;
+					}
+					if(yi!=this.yw-1) if(this.data[xi + yi*this.xw + zi*this.xw*this.yw]!=0&&this.data[xi + (yi+1)*this.xw + zi*this.xw*this.yw]==0) {
+						let ypos = yi-(this.yw/2-1);
+						let xpos = xi-(this.xw/2);
+						let zpos = zi-(this.zw/2);
+						let vi = ii*4;
+						this.setVerts(xpos,ypos,zpos,0,1,0,tx,ty,vi);
+						this.elems.set([vi+1,vi,vi+2,vi+2,vi+3,vi+1],ii*6);
+						ii++
+					}
+					if(zi!=this.zw-1) if(this.data[xi + yi*this.xw + zi*this.xw*this.yw]!=0&&this.data[xi + yi*this.xw + (zi+1)*this.xw*this.yw]==0) {
+						let zpos = zi-(this.zw/2-1);
+						let xpos = xi-(this.xw/2);
+						let ypos = yi-(this.yw/2);
+						let vi = ii*4;
+						this.setVerts(xpos,ypos,zpos,0,0,1,tx,ty,vi);
+						this.elems.set([vi,vi+1,vi+3,vi+3,vi+2,vi],ii*6);
+						ii++;
+					}
+				}
+			}
+			this.count=(ii)*6;
+		}
+		
+		if (!skip) {
+			//gl.bindVertexArray(vaob);
+			gl.bindVertexArray(vaob);
+
+			gl.bindBuffer(gl.ARRAY_BUFFER, pbb);
+			gl.bufferData(gl.ARRAY_BUFFER, room.verts, gl.DYNAMIC_DRAW);
+			gl.enableVertexAttribArray(posLoc2);
+			gl.vertexAttribPointer(posLoc2, 3, gl.FLOAT, false, 8 * FLOAT_SIZE, 0);
+			gl.enableVertexAttribArray(norLoc2);
+			gl.vertexAttribPointer(norLoc2, 3, gl.FLOAT, false, 8 * FLOAT_SIZE, 3 * FLOAT_SIZE);
+			gl.enableVertexAttribArray(texLoc2);
+			gl.vertexAttribPointer(texLoc2, 3, gl.FLOAT, false, 8 * FLOAT_SIZE, 6 * FLOAT_SIZE);
+
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibb);
+			gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, room.elems, gl.DYNAMIC_DRAW);
+		}
+	}
 }
 class Member {
 	constructor(mat = createMat(0,0,0,1,1,1,0,0), shp = new Float32Array([1, 1, 1, 1, 1, 1, 0, 0, 0]), col = new Float32Array([1, 1, 1]), child=[], type=0) {
@@ -500,16 +543,17 @@ class Member {
 		this.z=mat[14];
 		this.shp=shp; // Not used
 		this.col=col;
+		this.tws=new Float32Array([0.0]);
 		this.child=child;
 		this.type=type;
-		this.index=objs.length;
+		this.index=objs.length-1;
 		objs[0].push(this);
 		shpDat.set(shp, this.index*9);
-		gl.bindBuffer(gl.ARRAY_BUFFER, sb);
-		gl.bufferSubData(gl.ARRAY_BUFFER, this.index*4*9, shp);
+		//gl.bindBuffer(gl.ARRAY_BUFFER, sb);
+		//gl.bufferSubData(gl.ARRAY_BUFFER, this.index*4*9, shp);
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, cb);
-		gl.bufferSubData(gl.ARRAY_BUFFER, this.index*4*3, col);
+		//gl.bindBuffer(gl.ARRAY_BUFFER, cb);
+		//gl.bufferSubData(gl.ARRAY_BUFFER, this.index*4*3, col);
 
 	}
 	mult() {
@@ -524,6 +568,10 @@ class Member {
 }
 class Player {
 	constructor(x, y, z) {
+		this.jumpmeter;
+		this.flip=0;
+		this.lastvm=0;
+		this.lastva=0;
 		this.canjump=false;
 		this.count=0;
 		this.speed=0;
@@ -537,6 +585,7 @@ class Player {
 		this.vz=0;
 
 		this.ya=0;
+		this.vya=0;
 		let white = new Float32Array([1,1,1]);
 		let ltgry = new Float32Array([0.75,0.75,0.75]);
 		let graey = new Float32Array([0.5,0.5,0.5]);
@@ -550,41 +599,56 @@ class Player {
 					this.lrarm = new Member(matTrans(0,0.15,0), new Float32Array([0.05, 0.05, 0.05, 0.08, 0.08, 0.08, -0.2, 0.2, 0.15]), ltgry, [this.rhand]);
 				this.urarm = new Member(createMat(0.12,0.0,0,1,1,1,-Math.PI/12,0), new Float32Array([0.04, 0.04, 0.04, 0.05, 0.05, 0.05, -0.2, 0.2, 0.15]), ltgry, [this.lrarm]);
 
-			this.chest = new Member(matTrans(0,0.05,0), new Float32Array([0.18, 0.1, 0.1, 0.07, 0.07, 0.05, 0.0, 1, 0.1]), graey, [this.ularm, this.urarm]);
+					this.hair = new Member(matRotx(0,-0.02,0.0,-60), new Float32Array([0.11, 0.11, 0.11, 0.2, 0.05, 0.05, 0.0, 0.2, 0.3]), dkgry);
+				this.head = new Member(matRotx(0,-0.20,-0.02,30), new Float32Array([0.1, 0.1, 0.1, 0.07, 0.07, 0.05, 0.0, 1, 0.07]), white, [this.hair]);
+			this.chest = new Member(matTrans(0,-0.05,0), new Float32Array([0.18, 0.1, 0.1, 0.07, 0.07, 0.05, 0.0, 1, 0.1]), graey, [this.ularm, this.urarm, this.head]);
 			
 					this.lfoot = new Member(matRotx(0,0.25,0,80), new Float32Array([0.03, 0.04, 0.04, 0.04, 0.04, 0.02, 0.0, 0.2, 0.07]));
 				this.llleg = new Member(matTrans(0,0.25,0), new Float32Array([0.05, 0.05, 0.05, 0.03, 0.04, 0.04, -0.2, 0.2, 0.25]), white, [this.lfoot]);
-			this.ulleg = new Member(matTrans(-0.06,0.3,0), new Float32Array([0.05, 0.05, 0.05, 0.08, 0.08, 0.08, -0.2, 0.2, 0.25]), dkgry, [this.llleg]);
+			this.ulleg = new Member(matTrans(-0.06,0.2,0), new Float32Array([0.05, 0.05, 0.05, 0.08, 0.08, 0.08, -0.2, 0.2, 0.25]), dkgry, [this.llleg]);
 
 					this.rfoot = new Member(matRotx(0,0.25,0,80), new Float32Array([0.03, 0.04, 0.04, 0.04, 0.04, 0.02, 0.0, 0.2, 0.07]));
 				this.lrleg = new Member(matTrans(0,0.25,0), new Float32Array([0.05, 0.05, 0.05, 0.03, 0.04, 0.04, -0.2, 0.2, 0.25]), white, [this.rfoot]);
-			this.urleg = new Member(matTrans(0.06,0.3,0), new Float32Array([0.05, 0.05, 0.05, 0.08, 0.08, 0.08, -0.2, 0.2, 0.25]), dkgry, [this.lrleg]);
+			this.urleg = new Member(matTrans(0.06,0.2,0), new Float32Array([0.05, 0.05, 0.05, 0.08, 0.08, 0.08, -0.2, 0.2, 0.25]), dkgry, [this.lrleg]);
 			
-				this.hair = new Member(matRotx(0,-0.02,0.0,-60), new Float32Array([0.11, 0.11, 0.11, 0.2, 0.05, 0.05, 0.0, 0.2, 0.3]), dkgry);
-			this.head = new Member(matRotx(0,-0.15,-0.02,30), new Float32Array([0.1, 0.1, 0.1, 0.07, 0.07, 0.05, 0.0, 1, 0.07]), white, [this.hair]);
-		this.body = new Member(createMat(x,y-0.83,z,1,1,1,0,0), new Float32Array([0.10, 0.05, 0.05, 0.15, 0.05, 0.10, -0.2, 0.2, 0.3]), graey, [this.ulleg, this.urleg, this.head, this.chest]);
+		this.body = new Member(createMat(x,y-0.73,z,1,1,1,0,0), new Float32Array([0.10, 0.05, 0.05, 0.15, 0.05, 0.10, -0.4, 0.2, 0.2]), graey, [this.ulleg, this.urleg, this.chest]);
 	}
 	step() {
 		//let mx=1;
-		this.speed=(my+this.speed*5) / 6;
-		this.ya-=mx*2;
-		let sp = Math.abs(this.speed);
+		//this.speed = Math.hypot(this.vx+this.vy);
+		//this.speed=(my+this.speed*5) / 6;
 		if (this.canjump) {
-			this.vx = this.speed*0.1*-Math.dsin(this.ya);
-			this.vz = this.speed*0.1*Math.dcos(this.ya);
+			this.vx = ((mx*-Math.dcos(xa)+my*Math.dsin(xa))*0.1+this.vx*5) / 6;
+			this.vz = ((my*Math.dcos(xa)+mx*Math.dsin(xa))*0.1+this.vz*5) / 6;
+			this.speed = -Math.hypot(this.vx,this.vz)*10;
+			//this.vx = this.speed*0.1*-Math.dsin(mx);
+			//this.vz = this.speed*0.1*Math.dcos(this.ya);
 		}
 		else {
-			this.vx += this.speed*0.0025*-Math.dsin(this.ya);
-			this.vz += this.speed*0.0025*Math.dcos(this.ya);
+			this.vx += 0.0025*(mx*-Math.dcos(xa)+my*Math.dsin(xa))-this.vx*0.001;
+			this.vz += 0.0025*(my*Math.dcos(xa)+mx*Math.dsin(xa))-this.vz*0.001;
+			this.speed=-1;
 		}
-		this.vy += 0.01 - this.canjump*jp*0.2;
-		if (this.canjump&&jp) {this.canjump=false; sndFwip.play();}
-		if (this.check(this.x+this.vx, this.y, this.z)) this.x+=this.vx;
-		if (this.check(this.x, this.y, this.z+this.vz)) this.z+=this.vz;
-		if (this.check(this.x, this.y+this.vy, this.z)) this.y+=this.vy;
+		this.lastva=(this.ya+5*this.lastva)/6;
+		this.ya=180*Math.atan2(this.vx,-this.vz)/Math.PI;
+		let sp = Math.min(Math.abs(this.speed),1);
+		if (sp>100) {norm=getnormal(this.vx,this.vy,this.vz); this.vx=norm[0]; this.vy=norm[1]; this.vz=norm[2];}
+
+		if (this.jumpmeter<=0) this.vy += 0.01 - this.canjump*jp*0.16;
+		if (this.canjump&&jp) {this.canjump=false; sndFwip.play(); this.jumpmeter=10;}
+		if (jp) this.jumpmeter-=1;
+		else this.jumpmeter=0;
+
+		let cn = Math.round(Math.max(sp/5,1)); //number of checks
+		for (let i=1; i<=cn; i++) {
+			if (this.check(this.x, this.y+this.vy*i/cn, this.z)) {if (this.vy) this.canjump=false;}
+			if (!this.check(this.x+this.vx*i/cn, this.y, this.z)) this.vx=0;
+			if (!this.check(this.x+this.vx, this.y, this.z+this.vz*i/cn)) this.vz=0;
+			this.x+=this.vx/cn; this.y+=this.vy/cn; this.z+=this.vz/cn;
+		}
 		
-		this.count=(this.count+5+5*sp);
-		if (my) {
+		this.count=(this.count+5+5*Math.abs(this.speed));
+		if (!this.vy&&(mx||my)) {
 			if (!this.stip&&this.count>180) {sndPaff.currentTime = 0; sndPaff.play(); this.stip=1;}
 			if (this.stip&&this.count>360) {this.count-=360; sndPaff.currentTime = 0; sndPaff.play(); this.stip=0;}
 		}
@@ -596,9 +660,22 @@ class Player {
 			else this.count=(270+this.count*3)/4+this.vy*30;
 			}
 
-		this.hair.base=matRotx(this.hair.x,this.hair.y,this.hair.z,sp*rot5*2+Math.min(this.speed,0.5)*30-60);
+		let tws = angDiff(this.ya+180*this.flip,-xa)*Math.PI/180
+		angle.value=`${180*tws/Math.PI} | ${this.ya} | ${xa}`;
+		if (Math.abs(tws)>Math.PI/2) this.flip=!this.flip;
+		this.body.tws[0]=tws * 3.0;
+		this.body.shp[5]=0.1+Math.abs(tws/100);
 
-		this.body.mat=rotMat(this.x,this.y+sp*-rot5*0.02-0.83,this.z, 0, this.ya, 0);
+		//this.hair.base=matRotx(this.hair.x,this.hair.y,this.hair.z,sp*rot5*2+Math.min(this.speed-this.vy*5,0.5)*30-60);
+		this.hair.base=rotMat(this.hair.x,this.hair.y,this.hair.z,sp*rot5*2+Math.min(this.speed-this.vy*5,0.5)*30-60,0,0,'zxy');
+		if (this.lastvm<0.01) this.lastvm=0;
+
+		this.lastvm = (this.speed+5*this.lastvm)/6;
+		this.body.mat=rotMat(this.x,this.y+sp*-rot5*0.02-0.73,this.z, (this.flip*2-1)*sp*10, this.ya+this.flip*180, 0, 'zxy');
+
+		//this.body.shp[3]=0.15+Math.abs(tws/100);
+		//gl.bindBuffer(gl.ARRAY_BUFFER, twb);
+		//gl.bufferSubData(gl.ARRAY_BUFFER, this.index*4, new Float32Array([ay]));
 		//this.pos[1]=abs(speed)*rot5;
 
 		//this.ulleg.pos[0]=speed*(rot1/45);
@@ -614,7 +691,8 @@ class Player {
 		//this.llleg.rot=speed*(-45-rot3);
 		//this.lrleg.rot=speed*(-45+rot3);
 
-		this.chest.base=rotMat(this.chest.x,this.chest.y,this.chest.z,0,(-rot1*0.5)*sp,0);
+		this.chest.base=rotMat(this.chest.x,this.chest.y,this.chest.z,0,this.flip*180+(-rot1*0.5)*sp-xa-this.ya,0);
+		this.head.base=rotMat(this.head.x,this.head.y,this.head.z,30,(rot1*0.5)*sp,0);
 		//this.urarm.pos[0]=speed*(rot1/30);
 		//this.ularm.pos[0]=speed*(-rot1/30);
 
@@ -628,15 +706,22 @@ class Player {
 		//this.lrarm.rot=speed*(45+rot1*2/3);
 		//this.llarm.rot=speed*(45-rot1*2/3);
 		if (k1) {alert(`${this.x} ${this.y} ${this.z}`); k1=0;}
-		if (k2) {alert(this.check(this.x, this.y, this.z)); k2=0;}
+		if (k2) {room.addBlock(Math.trunc(this.x+room.xw/2),Math.trunc(this.y+room.yw/2-0.5)+1,Math.trunc(this.z+room.zw/2),4); room.materialize(); k2=false;}
+		this.speed = -Math.hypot(this.vx,this.vz)*10;
 	}
 	check(x, y, z) {
 		let rx=x+room.xw/2;
 		let ry=y+room.yw/2-0.5;
 		let rz=z+room.zw/2;
+
 		let dx=Math.trunc(rx);
 		let dy=Math.trunc(ry);
 		let dz=Math.trunc(rz);
+
+		let rdx=rx-dx-0.5;
+		let rdy=ry-dy-0.5;
+		let rdz=rz-dz-0.5;
+
 		let fx=rx%1;
 		let fy=ry%1;
 		let fz=rz%1;
@@ -648,43 +733,46 @@ class Player {
 		let yc=(fy>0.5||fy<0.5);
 		let zc=(fz>0.75||fz<0.25);
 		let ret = true;
+
+		vector.value=`${dx.toFixed(2)} : ${rdx.toFixed(2)} | ${dy.toFixed(2)} : ${rdy.toFixed(2)} | ${dz.toFixed(2)} : ${rdz.toFixed(2)}`;
 		//alert(`index: ${dx+dy*room.xw+dz*room.xw*room.zw} x: ${dx} y: ${dy} z: ${dz}`);
-		if (room.data[dx+dy*room.xw+dz*room.xw*room.zw]) {return false;}
 
 		//Check sides
 		if (yc) {
-			if (room.data[dx+(dy-1+2*sy)*room.xw+dz*room.xw*room.zw]) {this.vy=0; if (!this.canjump) {sndFloof.play()}; this.canjump=true; this.y=dy-room.yw/2+1; ret = false;}
+			if (room.data[dx+(dy-1+2*sy)*room.xw+dz*room.xw*room.zw]) {this.vy=0; if (!this.canjump) {sndFloof.play()}; this.canjump=true; this.y=dy-room.yw/2+1;}
 			//Check edge (xy)
-			if (yc&&Math.hypot(rx-dx,ry-dy-0.25+sy*0.5)<0.25) {
-				if (room.data[(dx-1+2*sx)+(dy-1+2*sy)*room.xw+dz*room.xw*room.zw]) {this.getTanVel(0.5-fx,0.5-fy,0); ret = false;}
+			if (yc&&Math.hypot(rdx,rdy-0.25+sy*0.5)<0.25) {
+				if (room.data[(dx-1+2*sx)+(dy-1+2*sy)*room.xw+dz*room.xw*room.zw]) {this.getTanVel(0.5-fx,0.5-fy,0);}
 				//Check corner (xyz)
-				if (Math.hypot(rx-dx,ry-dy-0.25+sy*0.5,rz-dz)<0.25) {
-					if (room.data[(dx-1+2*sx)+(dy-1+2*sy)*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.getTanVel(0.5-fx,0.5-fy,0.5-fz); ret = false;}
+				if (Math.hypot(rdx,rdy-0.25+sy*0.5,rdz)<0.25) {
+					if (room.data[(dx-1+2*sx)+(dy-1+2*sy)*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.getTanVel(0.5-fx,0.5-fy,0.5-fz);}
 				}
 			}
 			//check edge (yz)
-			if (zc&&Math.hypot(ry-dy-0.25+sy*0.5,rz-dz)<0.25) {
-				if (room.data[dx+(dy-1+2*sy)*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.getTanVel(0,0.5-fy,0.5-fz); ret = false;}
-			}
-		}
-		if (xc) {
-			if (room.data[(dx-1+2*sx)+dy*room.xw+dz*room.xw*room.zw]) {this.vx=0; this.x=dx-room.xw/2+0.25+0.50*sx; ret = false;}
-			//Check edge (xz)
-			if (zc&&Math.hypot(rx-dx,rz-dz)<0.25) {
-				if (room.data[(dx-1+2*sx)+dy*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.getTanVel(0.5-fx,0,0.5-fz); ret = false;}
+			if (zc&&Math.hypot(rdy-0.25+sy*0.5,rdz)<0.25) {
+				if (room.data[dx+(dy-1+2*sy)*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.getTanVel(0,0.5-fy,0.5-fz);}
 			}
 		}
 		if (zc) {
-			if (room.data[dx+dy*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.vz=0; this.z=dz-room.zw/2+0.25+0.50*sz; ret = false;}
+			if (room.data[dx+dy*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.vz=0; this.z=dz-room.zw/2+0.25+0.50*sz;}
 		}
+		if (xc) {
+			if (room.data[(dx-1+2*sx)+dy*room.xw+dz*room.xw*room.zw]) {this.vx=0; this.x=dx-room.xw/2+0.25+0.50*sx;}
+			//Check edge (xz)
+			if (zc&&Math.hypot(rdx,rdz)<0.25) {
+				if (room.data[(dx-1+2*sx)+dy*room.xw+(dz-1+2*sz)*room.xw*room.zw]) {this.getTanVel(0.5-fx,0,0.5-fz);}
+			}
+		}
+
+		if (room.data[dx+dy*room.xw+dz*room.xw*room.zw]) {return false;}
 		let eyes = [eye1,eye2,eye3,eye4]
 		let xsn = (Math.sign(this.x)>0)*1;
 		let ysn = (Math.sign(this.z)>0)*2;
 		let nx=this.x-eyes[xsn+ysn].x;
-		let ny=this.y-eyes[xsn+ysn].y-0.25;
+		let ny=this.y-eyes[xsn+ysn].y;
 		let nz=this.z-eyes[xsn+ysn].z;
 		if (k3) {alert(`${xsn} | ${ysn}`);}
-		if (Math.hypot(nx,ny,nz)<1.25) {this.getTanVel(nx,ny,nz); this.vx+=nx/5; this.vy+=ny/5; this.vz+=nz/5; if (this.canjump) ret=false; sndBwup.play();}
+		if (Math.hypot(nx,ny-0.25,nz)<1.25||Math.hypot(nx,ny-0.75,nz)<1.25) {let norm=getnormal(nx,ny,nz); this.getTanVel(nx,ny,nz); this.vx=norm[0]/5+this.vx; this.vy=norm[1]/5-jp*0.1+this.vy; this.vz=norm[2]/5+this.vz; if (this.canjump) ret=false; sndBwup.play();}
 		return ret;
 	}
 	getTanVel(nx,ny,nz) {
@@ -823,7 +911,7 @@ icosphere = (order = 0) => {
 }
 ///////////////////////////////////////////////////////////////////////////////////
 
-var ico1 = icosphere(1);
+var ico1 = icosphere(2);
 
 //create 
 
@@ -836,6 +924,7 @@ const posLoc = gl.getAttribLocation(program, 'position');
 const colLoc = gl.getAttribLocation(program, 'color');
 const matLoc = gl.getAttribLocation(program, 'matrix');
 const shpLoc = gl.getAttribLocation(program, 'shape');
+const twsLoc = gl.getAttribLocation(program, 'twist');
 const viewLoc = gl.getUniformLocation(program, 'view');
 const projLoc = gl.getUniformLocation(program, 'proj');
 //const texLoc = gl.getAttribLocation(program, "inTexCoord");
@@ -848,14 +937,19 @@ const norLoc2 = gl.getAttribLocation(program2, "norm");
 
 //alert(`pos: ${posLoc2} view: ${viewLoc2} proj ${projLoc2} tex ${texLoc2} nor ${norLoc2}`);
 
-const matDat = new Float32Array(32 * 16);//FIXME
+const iMax = 32;
+
+const matDat = new Float32Array(iMax * 16);//FIXME
 const mb = gl.createBuffer();
 
-const shpDat = new Float32Array(32 * 9);//FIXME
+const shpDat = new Float32Array(iMax * 9);//FIXME
 const sb = gl.createBuffer();
 
-const colDat = new Float32Array(32 * 3);//FIXME
+const colDat = new Float32Array(iMax * 3);//FIXME
 const cb = gl.createBuffer();
+
+const twsDat = new Float32Array(iMax);
+const twb = gl.createBuffer();
 //fromhere
 const verts=[ico1[0]];
 const indexs=[ico1[1]];
@@ -864,23 +958,32 @@ const vao = [];
 const pb = [];
 const ib = [];
 
-var room = new Room(16,16,16);
+var player = new Player(0, 0, 0);
+var eye1 = new Eye(-6,6,-6);
+var eye2 = new Eye(6,6,-6);
+var eye3 = new Eye(-6,6,6);
+var eye4 = new Eye(6,6,6);
 
 //batch stuff
 const vaob = gl.createVertexArray();
-	gl.bindVertexArray(vaob);
 const pbb = gl.createBuffer();
+const ibb = gl.createBuffer();
+
+var room = new Room(16,16,16);
+
+	gl.bindVertexArray(vaob);
+
 	gl.bindBuffer(gl.ARRAY_BUFFER, pbb);
-	gl.bufferData(gl.ARRAY_BUFFER, room.verts, gl.STATIC_DRAW);
+	gl.bufferData(gl.ARRAY_BUFFER, room.verts, gl.DYNAMIC_DRAW);
 	gl.enableVertexAttribArray(posLoc2);
 	gl.vertexAttribPointer(posLoc2, 3, gl.FLOAT, false, 8 * FLOAT_SIZE, 0);
 	gl.enableVertexAttribArray(norLoc2);
 	gl.vertexAttribPointer(norLoc2, 3, gl.FLOAT, false, 8 * FLOAT_SIZE, 3 * FLOAT_SIZE);
 	gl.enableVertexAttribArray(texLoc2);
 	gl.vertexAttribPointer(texLoc2, 3, gl.FLOAT, false, 8 * FLOAT_SIZE, 6 * FLOAT_SIZE);
-const ibb = gl.createBuffer();
+
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibb);
-	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, room.elems, gl.STATIC_DRAW);
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, room.elems, gl.DYNAMIC_DRAW);
 
 	const texture = gl.createTexture();
 	gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -966,17 +1069,19 @@ gl.enableVertexAttribArray(colLoc);
 gl.vertexAttribPointer(colLoc, 3, gl.FLOAT, false, bytesPerColor, 0);
 gl.vertexAttribDivisor(colLoc, 1);
 
+gl.bindBuffer(gl.ARRAY_BUFFER, twb);
+gl.bufferData(gl.ARRAY_BUFFER, twsDat.byteLength, gl.DYNAMIC_DRAW);
+
+gl.enableVertexAttribArray(twsLoc);
+gl.vertexAttribPointer(twsLoc, 1, gl.FLOAT, false, 0, 0);
+gl.vertexAttribDivisor(twsLoc, 1);
+
 
 }
 
 
 //var player = new Ship(0, 0);
-alert('loaded');
-var player = new Player(0, 0, 0);
-var eye1 = new Eye(-6,6,-6);
-var eye2 = new Eye(6,6,-6);
-var eye3 = new Eye(-6,6,6);
-var eye4 = new Eye(6,6,6);
+
 /*
 var mshp = new Float32Array([0.22, 0.22, 0.22, 0.25, 0.25, 0.25, -0.2, 0.2, 1	])
 
@@ -1022,7 +1127,8 @@ function render(time) {
 	eye4.step();
 	gamepad();
 	xa+=ax;
-	ya+=ay;
+	xa = ((((xa + 180) % 360) + 360) % 360) - 180;
+	ya-=ay;
 	ya=clamp(ya, -89, 89);
 
 	//memb.mat=createMat(0, 0, 0, 1, 1, 1, m1a, 0);
@@ -1031,8 +1137,8 @@ function render(time) {
 	let x = player.head.mat[12];
 	let y = player.head.mat[13];
 	let z = player.head.mat[14];
-	let view = createView(scroll*Math.dsin(xa-player.ya)*Math.dcos(ya)+x, scroll*Math.dsin(ya)+y, scroll*Math.dcos(xa-player.ya)*Math.dcos(ya)+z, x, y, z, 0, -1, 0);
-	let proj = createProj(Math.PI/3.0, 1.0, 0.1, 100.0)
+	let view = createView(scroll*Math.dsin(xa)*Math.dcos(ya)+x, scroll*Math.dsin(ya)+y, scroll*Math.dcos(xa)*Math.dcos(ya)+z, x, y, z, 0, -1, 0);
+	let proj = createProj(Math.PI/2.0, 1.0, 0.01, 100.0)
 	gl.uniformMatrix4fv(viewLoc, false, view);
 	gl.uniformMatrix4fv(projLoc, false, proj);
 	//gl.uniformMatrix4fv(rotxLoc, false, matRotx(ya));
@@ -1052,7 +1158,7 @@ function render(time) {
 	gl.useProgram(program2);
 	gl.uniformMatrix4fv(viewLoc2, false, view);
 	gl.uniformMatrix4fv(projLoc2, false, proj);
-	gl.drawElements(gl.TRIANGLES, room.count, gl.UNSIGNED_SHORT, 0)
+	gl.drawElements(gl.TRIANGLES, room.elems.length, gl.UNSIGNED_SHORT, 0)
 
 	gl.useProgram(program);
 	
@@ -1069,6 +1175,7 @@ function render(time) {
 			matDat.set(obj.mat, ii*16);
 			shpDat.set(obj.shp, ii*9);
 			colDat.set(obj.col, ii*3);
+			twsDat.set(obj.tws, ii);
 		};
 		gl.bindBuffer(gl.ARRAY_BUFFER, mb);
 		gl.bufferSubData(gl.ARRAY_BUFFER, 0, matDat);
@@ -1078,6 +1185,9 @@ function render(time) {
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, cb);
 		gl.bufferSubData(gl.ARRAY_BUFFER, 0, colDat);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, twb);
+		gl.bufferSubData(gl.ARRAY_BUFFER, 0, twsDat);
 
 		gl.drawElementsInstanced(gl.TRIANGLES, indexs[0].length, gl.UNSIGNED_INT, 0, objs[0].length);
 	}
